@@ -18,14 +18,17 @@ export function drawHands(ctx, hands, { skeleton = true } = {}) {
       continue;
     }
     if (skeleton) {
-      ctx.strokeStyle = 'rgba(237, 235, 255, 0.45)';
-      ctx.lineWidth = 2;
       ctx.lineCap = 'round';
       ctx.beginPath();
       for (const [a, b] of HAND_CONNECTIONS) {
         ctx.moveTo(p[a].x, p[a].y);
         ctx.lineTo(p[b].x, p[b].y);
       }
+      ctx.strokeStyle = 'rgba(18, 20, 43, 0.35)';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(237, 235, 255, 0.7)';
+      ctx.lineWidth = 2;
       ctx.stroke();
     }
     for (const i of FINGERTIPS) {

@@ -147,13 +147,16 @@ For hand play, zoom so each key is about as wide as the gap between your fingert
 | Piano: scroll and zoom | **← →** (hold **Shift** for an octave) and **+ −** |
 | Piano: sustain pedal | Hold **Space** |
 
-**Settings** are remembered in your browser. They include volume, reverb, key and scale, camera brightness, the hand outline, a **left-handed layout** that flips the guitar, drums and theremin, and options for each instrument.
+**Settings** are remembered in your browser. They include volume, reverb, key and scale, the hand outline, a **left-handed layout** that flips the guitar, drums and theremin, and options for each instrument.
+
+**Camera view and quality.** The eye button next to Settings switches the camera picture between **Clear** (full brightness, no shading), **Soft**, **Dimmed** (instruments stand out most) and **Hidden** (tracking keeps working). Under **Camera quality** you can choose 720p, 1080p (the default) or the highest your camera supports, up to 4K. Settings also shows what your camera is actually sending. The picture is drawn by the browser's own video layer at full resolution, and hand tracking uses a scaled-down copy, so a sharper picture doesn't slow tracking down.
 
 ### Tips for good tracking
 
 - **Light your hands from the front.** A bright window behind you makes them hard to see.
 - **Sit about an arm's length from the camera,** so each whole hand, including the wrist, stays in view.
 - **A plain background helps.**
+- **For the sharpest picture,** set Camera view to Clear and Camera quality to the highest. If your computer struggles, step back down to 1080p or 720p.
 - **If tracking stutters on your computer,** add `?cpu` to the address (`http://localhost:8000/?cpu`) to skip the GPU.
 
 ## How it works

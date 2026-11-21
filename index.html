@@ -19,6 +19,9 @@
   <header class="topbar">
     <div class="brand">Virtual Music</div>
     <nav class="tabs" id="instrumentTabs" aria-label="Instruments"></nav>
+    <button class="icon-btn" id="viewBtn" type="button" data-dwell aria-label="Change camera view" title="Camera view" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3.2"/></svg>
+    </button>
     <button class="icon-btn" id="settingsBtn" type="button" data-dwell aria-label="Settings" aria-expanded="false" aria-controls="drawer" title="Settings (comma key)">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
     </button>
@@ -42,6 +45,7 @@
     <h3 id="instSettingsTitle">Instrument</h3>
     <section class="controls" id="instrumentSettings"></section>
     <button class="btn wide" id="cameraToggle" type="button" data-dwell>Turn camera on</button>
+    <p class="camera-info" id="cameraInfo" aria-live="polite"></p>
     <p class="shortcuts">Keys 1 to 7 switch instruments and the comma key opens settings. On the piano, the letter keys play notes (A W S E D F T G Y H U J K) and Space is the sustain pedal. Hold a fingertip over any button for a second to press it without touching the mouse.</p>
   </aside>
 

@@ -7,7 +7,8 @@ export const GLOBAL_SCHEMA = [
   { key: 'reverb', label: 'Reverb', type: 'range', min: 0, max: 1, step: 0.01, default: 0.35 },
   { key: 'key', label: 'Key', type: 'select', options: NOTE_NAMES.map((n, i) => [i, n]), default: 0 },
   { key: 'scale', label: 'Scale', type: 'select', options: Object.entries(SCALES).map(([k, v]) => [k, v.label]), default: 'pentaMajor' },
-  { key: 'camera', label: 'Camera brightness', type: 'range', min: 0, max: 1, step: 0.01, default: 0.5 },
+  { key: 'cameraView', label: 'Camera view', type: 'select', options: [['clear', 'Clear, full brightness'], ['soft', 'Soft, lightly shaded'], ['dim', 'Dimmed, so instruments stand out'], ['off', 'Hidden (tracking keeps working)']], default: 'soft' },
+  { key: 'cameraQuality', label: 'Camera quality', type: 'select', options: [['720', 'HD 720p, lightest on your computer'], ['1080', 'Full HD 1080p'], ['max', 'Highest your camera supports, up to 4K']], default: '1080' },
   { key: 'skeleton', label: 'Show hand outline', type: 'toggle', default: true },
   { key: 'lefty', label: 'Left-handed layout', type: 'toggle', default: false },
 ];

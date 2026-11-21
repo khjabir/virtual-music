@@ -64,6 +64,9 @@ export class VString {
     ctx.lineCap = 'round';
     if (this.muted) ctx.setLineDash([4, 8]);
     path();
+    ctx.strokeStyle = 'rgba(18, 20, 43, 0.3)';
+    ctx.lineWidth = this.width + 2.5;
+    ctx.stroke();
     ctx.strokeStyle = this.muted ? 'rgba(226, 222, 255, 0.22)' : colorAtRest ? noteColor(this.midi, 0.6) : rest;
     ctx.lineWidth = this.width;
     ctx.stroke();

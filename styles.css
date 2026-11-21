@@ -27,7 +27,30 @@ html, body {
   -webkit-user-select: none;
 }
 
-#video { display: none; }
+/* The camera is shown by the browser's own video layer at full resolution, mirrored like a
+   selfie view; the canvas with the instruments sits on top. */
+#video {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+  background: var(--stage);
+  display: none;
+}
+
+body.camera-on #video { display: block; }
+
+/* Over the camera picture, the instructions get a backing so they stay readable. */
+body.camera-on .hint {
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(18, 20, 43, 0.68);
+  color: var(--text);
+}
+
+body.camera-on .brand { text-shadow: 0 1px 3px rgba(18, 20, 43, 0.9), 0 0 14px rgba(18, 20, 43, 0.7); }
 
 #stage {
   position: fixed;
@@ -400,6 +423,9 @@ input[type='checkbox']::after {
 
 input[type='checkbox']:checked { background: var(--amber); }
 input[type='checkbox']:checked::after { transform: translateX(16px); background: var(--ink); }
+
+.camera-info { margin: 10px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.camera-info:empty { display: none; }
 
 .shortcuts { margin: 16px 0 0; font-size: 13px; line-height: 1.5; color: var(--muted); }
 

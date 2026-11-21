@@ -11,6 +11,24 @@ const $ = (id) => document.getElementById(id);
 const video = $('video');
 const canvas = $('stage');
 const ctx = canvas.getContext('2d');
+
+// Over a bright camera picture, light canvas text gets a thin dark outline so it stays readable.
+// Dark text (used on piano keys) is left alone.
+let textHalo = false;
+const plainFillText = ctx.fillText.bind(ctx);
+ctx.fillText = (text, x, y, maxWidth) => {
+  const style = typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '';
+  const alpha = /^(rgba|hsla)\(/.test(style) ? parseFloat(style.split(',').pop()) : 1;
+  if (textHalo && alpha >= 0.5 && !/^rgba?\((18|24|30),/.test(style.replace(/\s/g, ''))) {
+    ctx.save();
+    ctx.lineWidth = 3.5;
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(18, 20, 43, 0.7)';
+    ctx.strokeText(text, x, y, maxWidth);
+    ctx.restore();
+  }
+  return maxWidth === undefined ? plainFillText(text, x, y) : plainFillText(text, x, y, maxWidth);
+};
 const UI_SELECTOR = '.topbar, .drawer, .start-card, .actions, .toast, .instrument-ui';
 
 const app = {
@@ -33,6 +51,74 @@ const app = {
   setInstrument,
 };
 window.virtualMusic = app; // for poking around in the browser console
+
+/* ---------- camera view ---------- */
+
+// How much the camera image is shaded so the instruments stay readable.
+const CAMERA_VIEWS = {
+  clear: { label: 'Clear', shade: 0, vignette: 0 },
+  soft: { label: 'Soft', shade: 0.16, vignette: 0.45 },
+  dim: { label: 'Dimmed', shade: 0.5, vignette: 1 },
+  off: { label: 'Hidden', shade: 1, vignette: 1 },
+};
+const VIEW_ORDER = ['clear', 'soft', 'dim', 'off'];
+const QUALITY = { 720: [1280, 720], 1080: [1920, 1080], max: [3840, 2160] };
+
+function cameraConstraints() {
+  const [width, height] = QUALITY[app.settings.global.cameraQuality] || QUALITY[1080];
+  return { video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: 30 }, facingMode: 'user' }, audio: false };
+}
+
+// Hand tracking does not need more than 720p, so larger frames are scaled down for it.
+const detectCanvas = document.createElement('canvas');
+const detectCtx = detectCanvas.getContext('2d');
+function detectionSource() {
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (vw <= 1280) return video;
+  const w = 1280, h = Math.round((vh * 1280) / vw);
+  if (detectCanvas.width !== w || detectCanvas.height !== h) { detectCanvas.width = w; detectCanvas.height = h; }
+  detectCtx.drawImage(video, 0, 0, w, h);
+  return detectCanvas;
+}
+
+function applyCameraView() {
+  const view = app.settings.global.cameraView;
+  document.body.classList.toggle('camera-on', app.camera.on && view !== 'off');
+  const btn = $('viewBtn');
+  btn.hidden = !app.camera.on;
+  btn.title = `Camera view: ${(CAMERA_VIEWS[view] || CAMERA_VIEWS.soft).label}. Click to change.`;
+}
+
+function updateCameraInfo() {
+  const el = $('cameraInfo');
+  const track = app.camera.stream && app.camera.stream.getVideoTracks()[0];
+  if (!app.camera.on || !track) { el.textContent = ''; return; }
+  const s = track.getSettings();
+  const w = s.width || video.videoWidth, h = s.height || video.videoHeight;
+  const fps = s.frameRate ? ` at ${Math.round(s.frameRate)} fps` : '';
+  el.textContent = `Your camera is sending ${w} × ${h}${fps}. Hand tracking runs at ${Math.round(app.fps)} fps.`;
+}
+
+/** Switch resolution without reloading hand tracking. */
+async function restartCamera() {
+  if (!app.camera.on) return;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
+  } catch (err) {
+    toast(`That camera quality is not available here (${err.name}). Keeping the current one.`, 4000);
+    return;
+  }
+  const old = app.camera.stream;
+  video.srcObject = stream;
+  try { await video.play(); } catch (e) { /* muted video may autoplay */ }
+  if (old) old.getTracks().forEach((tr) => tr.stop());
+  app.camera.stream = stream;
+  app.lastVideoTime = -1;
+  const s = stream.getVideoTracks()[0].getSettings();
+  toast(`Camera now ${s.width || video.videoWidth} × ${s.height || video.videoHeight}`);
+  updateCameraInfo();
+}
 
 /* ---------- layout ---------- */
 
@@ -133,7 +219,9 @@ function updateSetting(scope, key, value, fromUi = false) {
   if (scope === 'global') {
     if (key === 'volume') app.audio.setVolume(value);
     else if (key === 'reverb') app.audio.setReverb(value);
-    else if (key !== 'camera' && key !== 'skeleton' && app.instrument) app.instrument.settingsChanged();
+    else if (key === 'cameraView') applyCameraView();
+    else if (key === 'cameraQuality') restartCamera();
+    else if (key !== 'skeleton' && app.instrument) app.instrument.settingsChanged();
     if (!fromUi) renderGlobalSettings();
   } else if (app.instrument && scope === app.instrument.id) {
     app.instrument.settingsChanged();
@@ -192,10 +280,7 @@ async function startCamera(report) {
   trackerReady.catch(() => {});
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: false,
-    });
+    stream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
   } catch (err) {
     report(cameraErrorText(err), true);
     return false;
@@ -215,6 +300,8 @@ async function startCamera(report) {
   }
   app.camera = { on: true, stream };
   updateCameraButton();
+  applyCameraView();
+  updateCameraInfo();
   return true;
 }
 
@@ -224,6 +311,8 @@ function stopCamera() {
   app.camera = { on: false, stream: null };
   app.camHands.clear();
   updateCameraButton();
+  applyCameraView();
+  updateCameraInfo();
 }
 
 function updateCameraButton() {
@@ -268,6 +357,12 @@ $('cameraToggle').addEventListener('click', async () => {
 });
 
 $('settingsBtn').addEventListener('click', () => toggleDrawer());
+$('viewBtn').addEventListener('click', () => {
+  const cur = app.settings.global.cameraView;
+  const next = VIEW_ORDER[(VIEW_ORDER.indexOf(cur) + 1) % VIEW_ORDER.length];
+  updateSetting('global', 'cameraView', next);
+  toast(`Camera view: ${CAMERA_VIEWS[next].label}`, 1500);
+});
 $('drawerClose').addEventListener('click', () => toggleDrawer(false));
 
 window.addEventListener('keydown', (e) => {
@@ -340,7 +435,7 @@ function frame(nowMs) {
   if (app.camera.on && app.tracker.landmarker && video.readyState >= 2 && video.currentTime !== app.lastVideoTime) {
     app.lastVideoTime = video.currentTime;
     try {
-      const res = app.tracker.detect(video);
+      const res = app.tracker.detect(detectionSource());
       const m = coverMap();
       const dets = (res ? res.landmarks : []).map((lm, i) => ({
         points: lm.map((p) => ({ x: m.ox + (1 - p.x) * m.dw, y: m.oy + p.y * m.dh, z: p.z })),
@@ -355,7 +450,11 @@ function frame(nowMs) {
   }
   if (!fresh) app.camHands.idle();
   if (t - fpsT0 >= 1) { app.fps = fpsCount / (t - fpsT0); fpsCount = 0; fpsT0 = t; }
-  if (t - lastStatus > 0.25) { updateStatus(); lastStatus = t; }
+  if (t - lastStatus > 0.25) {
+    updateStatus();
+    if (!$('drawer').hidden) updateCameraInfo();
+    lastStatus = t;
+  }
 
   const hands = [...app.camHands.present, ...app.pointerHands.frame(t)];
   try {
@@ -371,19 +470,21 @@ function frame(nowMs) {
 function render(hands, t) {
   const { W, H } = app;
   const g = app.settings.global;
-  ctx.fillStyle = '#1B1A3F';
-  ctx.fillRect(0, 0, W, H);
-  if (app.camera.on && video.readyState >= 2 && g.camera > 0) {
-    const m = coverMap();
-    ctx.save();
-    ctx.globalAlpha = g.camera;
-    ctx.translate(W, 0);
-    ctx.scale(-1, 1); // mirror, so moving right moves right on screen
-    ctx.drawImage(video, m.ox, m.oy, m.dw, m.dh);
-    ctx.restore();
+  const showCamera = app.camera.on && g.cameraView !== 'off';
+  const view = showCamera ? CAMERA_VIEWS[g.cameraView] || CAMERA_VIEWS.soft : CAMERA_VIEWS.off;
+  // The camera itself is the <video> element underneath; here we only shade it.
+  textHalo = showCamera && view.shade < 0.3;
+  ctx.clearRect(0, 0, W, H);
+  if (view.shade > 0) {
+    ctx.fillStyle = `rgba(27, 26, 63, ${view.shade})`;
+    ctx.fillRect(0, 0, W, H);
   }
-  ctx.fillStyle = vignette;
-  ctx.fillRect(0, 0, W, H);
+  if (view.vignette > 0) {
+    ctx.globalAlpha = view.vignette;
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
   if (app.instrument) app.instrument.draw(ctx, t);
   drawHands(ctx, hands, { skeleton: g.skeleton });
   app.dwell.draw(ctx);
@@ -397,5 +498,6 @@ resize();
 window.addEventListener('resize', resize);
 setInstrument(app.settings.lastInstrument || 'guitar');
 updateCameraButton();
+applyCameraView();
 updateStatus();
 requestAnimationFrame(frame);
