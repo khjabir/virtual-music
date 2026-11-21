@@ -101,6 +101,22 @@ export class KeyboardRow {
     return this.whites[clamp(wi, 0, this.nWhite - 1)] || null;
   }
 
+  /** White key under an x position, or null outside the keyboard. */
+  whiteAt(px) {
+    const r = this.rect;
+    if (px < r.x || px > r.x + r.w) return null;
+    return this.whites[clamp(Math.floor(this.start + (px - r.x) / this.ww), 0, this.nWhite - 1)] || null;
+  }
+
+  /** Black key under an x position, or null between black keys. */
+  blackAt(px) {
+    for (const k of this.blacks) {
+      const kr = this.keyRect(k);
+      if (px >= kr.x && px <= kr.x + kr.w) return k;
+    }
+    return null;
+  }
+
   centerX(k) {
     const kr = this.keyRect(k);
     return kr.x + kr.w / 2;

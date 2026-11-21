@@ -26,7 +26,7 @@ export class Piano extends Instrument {
   static id = 'piano';
   static label = 'Piano';
   static icon = '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7.5 13v6M12 13v6M16.5 13v6"/><path d="M6.5 5h2v8h-2zM11 5h2v8h-2zM15.5 5h2v8h-2z" fill="currentColor"/>';
-  static hint = 'Hover your fingertips over the keys, then tap one finger down to play, as on a real piano. Moving your hand around does not play. Pinch the strip at the top and drag to scroll.';
+  static hint = 'Hover your fingertips over the keys and tap one finger down to play. Keep it down and slide sideways to run across the keys. Moving your hand without a finger down plays nothing.';
   static settings = [
     { key: 'sound', label: 'Sound', type: 'select', options: SOUND_OPTIONS, default: 'grand' },
     { key: 'mode', label: 'Layout', type: 'select', options: [['single', 'One keyboard'], ['double', 'Two keyboards, stacked']], default: 'single' },
@@ -34,6 +34,8 @@ export class Piano extends Instrument {
     { key: 'size', label: 'Keyboard size', type: 'select', options: [[49, '49 keys (C2 to C6)'], [61, '61 keys (C2 to C7)'], [76, '76 keys (E1 to G7)'], [88, '88 keys (A0 to C8)']], default: 61 },
     { key: 'labels', label: 'Key labels', type: 'select', options: LABEL_CYCLE.map((k) => [k, { off: 'Off', c: 'C keys only', white: 'White keys', all: 'All keys' }[k]]), default: 'c' },
     { key: 'notation', label: 'Label style', type: 'select', options: [['octave', 'C4, D4, E4'], ['letters', 'C, D, E'], ['solfege', 'Do, Re, Mi']], default: 'octave' },
+    { key: 'position', label: 'Keyboard position', type: 'select', options: [['high', 'Higher up'], ['middle', 'Middle (recommended for the camera)'], ['low', 'Bottom of the screen']], default: 'middle' },
+    { key: 'gliss', label: 'Slide a pressed finger to run across the keys', type: 'toggle', default: true },
     { key: 'press', label: 'Press keys by', type: 'select', options: [['tap', 'Tapping a finger down (recommended)'], ['dip', 'Lowering fingertips into the keys']], default: 'tap' },
     { key: 'fingers', label: 'Play with', type: 'select', options: [['all', 'All five fingers'], ['four', 'Four fingers, no thumbs'], ['index', 'Index fingers only']], default: 'all' },
     { key: 'sensitivity', label: 'Tap sensitivity', type: 'range', min: 0.5, max: 2, step: 0.05, default: 1 },
@@ -104,14 +106,20 @@ export class Piano extends Instrument {
     const st = this.stage;
     const top = navBottom + 16;
     const x = this.W * 0.03, w = this.W * 0.94;
-    const bottom = st.bottom - 6;
+    // Middle keeps the keyboard where hands rest comfortably in front of a laptop camera,
+    // with room below the keys so whole hands, wrists included, stay in view.
+    const pos = this.opts.position || 'middle';
+    const limit = st.bottom - 6;
+    const bottom = pos === 'low' ? limit : Math.min(limit, this.H * (pos === 'high' ? 0.62 : 0.74));
     if (this.rows.length === 1) {
-      const h = clamp(Math.min(this.H * 0.34, bottom - top - 70), 110, 300);
-      this.rows[0].setRect(x, bottom - h, w, h);
+      const h = clamp(Math.min(this.H * 0.3, bottom - top - 40), 100, 280);
+      const b = Math.min(limit, Math.max(bottom, top + 40 + h));
+      this.rows[0].setRect(x, b - h, w, h);
     } else {
-      const h = clamp((bottom - top - 40 - 30) / 2, 80, 230);
-      this.rows[1].setRect(x, bottom - h, w, h);
-      this.rows[0].setRect(x, bottom - h - 30 - h, w, h);
+      const h = clamp((bottom - top - 30 - 30) / 2, 80, 220);
+      const b = Math.min(limit, Math.max(bottom, top + 30 + 2 * h + 30));
+      this.rows[1].setRect(x, b - h, w, h);
+      this.rows[0].setRect(x, b - h - 30 - h, w, h);
     }
     this.trailTop = top;
   }
@@ -397,6 +405,29 @@ export class Piano extends Instrument {
     }
   }
 
+  /**
+   * Glissando: a pressed finger sliding sideways plays every key it passes, staying on the
+   * colour it started on (white keys, or black keys), as on a real piano. A little
+   * hysteresis at key edges stops a resting finger from flickering between two keys.
+   */
+  slide(fk, row, x, t) {
+    const cur = row.byMidi.get(fk.midi);
+    if (cur && Math.abs(x - row.centerX(cur)) < row.keyRect(cur).w * 0.62) return;
+    const k = fk.white ? row.whiteAt(x) : row.blackAt(x);
+    if (!k || k.midi === fk.midi) return;
+    const dir = Math.sign(k.midi - fk.midi);
+    for (let m = fk.midi + dir; m !== k.midi; m += dir) {
+      const passed = row.byMidi.get(m);
+      if (!passed || passed.white !== fk.white) continue;
+      this.noteOn(fk.row, m, fk.vel * 0.9, t);
+      this.noteOff(fk.row, m, t);
+    }
+    this.noteOff(fk.row, fk.midi, t);
+    this.noteOn(fk.row, k.midi, fk.vel * 0.95, t);
+    fk.midi = k.midi;
+    fk.x = x;
+  }
+
   update(hands, dt, t) {
     this.rows.forEach((r) => r.step(dt));
     this.ensureSamples();
@@ -418,7 +449,7 @@ export class Piano extends Instrument {
         const key = row && row.keyAt(ev.x, ev.y);
         if (!key) continue;
         const vel = this.opts.velocity === 'fixed' ? 0.7 : clamp(0.22 + ev.speed * 0.2, 0.18, 1);
-        this.fingerKeys.set(ev.id, { row: row.index, midi: key.midi, x: ev.x });
+        this.fingerKeys.set(ev.id, { row: row.index, midi: key.midi, x: ev.x, white: key.white, vel });
         this.noteOn(row.index, key.midi, vel, t);
       } else {
         const fk = this.fingerKeys.get(ev.id);
@@ -430,10 +461,18 @@ export class Piano extends Instrument {
     this.cursors = [];
     for (const c of res.cursors) {
       const fk = this.fingerKeys.get(c.id);
-      if (fk && Math.abs(c.x - fk.x) > this.rows[fk.row].ww * 1.5) {
-        // Sliding well off a held key lifts it.
-        this.noteOff(fk.row, fk.midi, t);
-        this.fingerKeys.delete(c.id);
+      if (fk) {
+        const r = this.rows[fk.row];
+        if (!r.contains(c.x, c.y, r.rect.h * 0.6)) {
+          // The hand left the keyboard with the finger still down: let go.
+          this.noteOff(fk.row, fk.midi, t);
+          this.fingerKeys.delete(c.id);
+        } else if (this.opts.gliss) {
+          this.slide(fk, r, c.x, t);
+        } else if (Math.abs(c.x - fk.x) > r.ww * 1.5) {
+          this.noteOff(fk.row, fk.midi, t);
+          this.fingerKeys.delete(c.id);
+        }
       }
       const row = this.rowAt(c.x, c.y, dip ? 0.2 : 0.35);
       if (!row) continue;

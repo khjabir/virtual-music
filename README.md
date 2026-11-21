@@ -30,7 +30,7 @@ It all runs in a browser tab, with no install, no account and no server. Open th
 - **Gestures that feel like the real thing:**
   - The guitar has a chord neck and a strum zone, and the strings sound in the order you cross them.
   - Drums detect a stick-like strike.
-  - The piano listens for individual finger taps, so moving your hand around never plays a note.
+  - The piano listens for individual finger taps, so moving your hand around never plays a note. Keep a finger down and slide to run across the keys.
 - **A proper piano:**
   - 61 keys by default (49, 76 or 88 in Settings), with zoom and scroll.
   - One keyboard or two stacked keyboards.
@@ -100,7 +100,7 @@ The app is a static site, so there is nothing to build:
 | 1 | **Guitar** | Hold your left hand over the neck to pick one of six chords. Strum across the strings with your right index finger. Faster strums are louder, and a downstroke sounds the strings low to high. Four chord sets: pop, folk, rock and blues. Acoustic, nylon or overdriven electric. |
 | 2 | **Draw strings** | Pinch thumb and index finger on **both** hands, then pull your hands apart to stretch a string between them. Let go to keep it. Longer strings play lower notes. Swipe across a string to pluck it. Pinching one hand never draws, so you can't draw by accident while playing. With a mouse, drag; on a touch screen, touch with two fingers. |
 | 3 | **Harp** | 12 to 24 strings tuned to the current key and scale. Sweep your fingers sideways. |
-| 4 | **Piano** | Hover your fingertips over the keys, then tap one finger down. See [the piano](#the-piano) below. |
+| 4 | **Piano** | Hover your fingertips over the keys, then tap one finger down. Keep it down and slide to run across the keys. See [the piano](#the-piano) below. |
 | 5 | **Drums** | Kick, snare, hi-hat, three toms, crash, ride and clap. Strike downward with your index fingers and stop on a drum. Harder strokes are louder. |
 | 6 | **Marimba** | Strike the bars like the drums. Marimba, vibraphone, glockenspiel or steel drum. |
 | 7 | **Theremin** | Your right hand's height sets the pitch and your left hand's height sets the volume. Pinch to go silent. Glide freely or snap to the scale. |
@@ -110,6 +110,10 @@ The harp, drawn strings, marimba and theremin all follow the **Key** and **Scale
 ### The piano
 
 **Playing with your hands.** Hold your hands over the keys as you would on a real piano: palms down, fingers relaxed. Then tap one finger down. A key plays only when a single finger moves down relative to its own knuckle. Moving your hands around, lowering them or tilting the whole hand plays nothing. Each fingertip over the keyboard shows a ring that fills as the finger goes down, and the key under it glows. Hold the finger down to hold the note, and faster taps play louder.
+
+**Glissando.** Keep a finger down and slide sideways to run across the keys, as on a real piano. A slide that starts on a white key plays white keys, and one that starts on a black key plays black keys. If you'd rather lift a key whenever your finger slides off it, turn off **Slide a pressed finger to run across the keys** in Settings.
+
+**Keyboard position.** By default the keyboard sits in the middle of the screen, so both hands fit in the camera view with your wrists visible. If that suits your camera better, choose **Higher up** or **Bottom of the screen** under **Keyboard position** in Settings.
 
 **Zoom and scroll.** The strip at the top shows the whole keyboard, with the part on screen outlined in gold.
 - **Scroll:** drag the strip, pinch it with your hand and slide sideways, or use the arrow buttons, the arrow keys or the mouse wheel.
