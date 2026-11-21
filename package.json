@@ -1,10 +1,18 @@
 {
   "name": "virtual-music",
-  "version": "0.1.0",
-  "description": "Play guitar, piano, drums, harp, marimba and theremin in the air with webcam hand tracking.",
+  "version": "1.0.0",
+  "description": "Play guitar, piano, drums, harp, marimba and theremin in the air with webcam hand tracking. Runs entirely in the browser.",
+  "keywords": ["hand-tracking", "mediapipe", "web-audio", "music", "air-guitar", "virtual-instruments", "piano", "webcam", "gesture"],
+  "homepage": "https://khjabir.github.io/virtual-music/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/khjabir/virtual-music.git"
+  },
+  "bugs": "https://github.com/khjabir/virtual-music/issues",
+  "author": "khjabir",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "start": "npx --yes serve -l 8000 ."
-  },
-  "license": "UNLICENSED"
+  }
 }
