@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Virtual Music</title>
+  <meta name="description" content="Play guitar, piano, drums, harp, marimba and theremin in the air. Your webcam tracks your hands; everything runs in the browser.">
+  <meta name="theme-color" content="#12142B">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2312142B'/%3E%3Cpath d='M6 22 26 9' stroke='%23FFD166' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M6 15 20 6' stroke='%23EDEBFF' stroke-width='1.5' stroke-linecap='round' opacity='.6'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Recursive:slnt,wght,CASL@-15..0,300..1000,0..1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <video id="video" playsinline muted aria-hidden="true"></video>
+  <canvas id="stage" aria-label="Instrument stage"></canvas>
+
+  <header class="topbar">
+    <div class="brand">Virtual Music</div>
+    <nav class="tabs" id="instrumentTabs" aria-label="Instruments"></nav>
+    <button class="icon-btn" id="settingsBtn" type="button" data-dwell aria-label="Settings" aria-expanded="false" aria-controls="drawer" title="Settings (comma key)">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+    </button>
+  </header>
+
+  <div class="actions" id="instrumentActions" hidden></div>
+
+  <footer class="bottombar">
+    <p class="hint" id="hint"></p>
+    <p class="status" id="status" data-state="idle"><span class="dot" aria-hidden="true"></span><span id="statusText">Ready</span></p>
+  </footer>
+
+  <aside class="drawer" id="drawer" hidden aria-label="Settings">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="icon-btn small" id="drawerClose" type="button" data-dwell aria-label="Close settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <section class="controls" id="globalSettings"></section>
+    <h3 id="instSettingsTitle">Instrument</h3>
+    <section class="controls" id="instrumentSettings"></section>
+    <button class="btn wide" id="cameraToggle" type="button" data-dwell>Turn camera on</button>
+    <p class="shortcuts">Keys 1 to 7 switch instruments and the comma key opens settings. On the piano, the letter keys play notes (A W S E D F T G Y H U J K) and Space is the sustain pedal. Hold a fingertip over any button for a second to press it without touching the mouse.</p>
+  </aside>
+
+  <div class="start" id="start">
+    <div class="start-card">
+      <h1>Play the air.</h1>
+      <p class="lede">Your webcam follows your hands. Strum strings, press piano keys and hit drums that only exist on screen.</p>
+      <div class="start-actions">
+        <button class="btn primary" id="startCamera" type="button">Turn on camera</button>
+        <button class="btn" id="startMouse" type="button">Play with mouse or touch</button>
+      </div>
+      <p class="fine" id="startMsg">Video never leaves this device. Hand tracking runs inside your browser.</p>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    // ES modules don't load from file:// URLs, so explain how to serve the folder instead.
+    if (location.protocol === 'file:') {
+      var msg = document.getElementById('startMsg');
+      msg.className = 'fine error';
+      msg.innerHTML = 'This page needs a small local web server. In this folder, run <code>python3 -m http.server 8000</code>, then open <code>http://localhost:8000</code>.';
+      document.querySelectorAll('.start-actions button').forEach(function (b) { b.disabled = true; });
+    }
+  </script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
