@@ -31,6 +31,7 @@ export const KEYBOARD_SOUNDS = {
   choir: { label: 'Choir', gm: 'choir_aahs', gain: 0.8, release: 0.45, loop: true, fallback: 'synth' },
   pad: { label: 'Warm pad', gm: 'pad_2_warm', gain: 0.7, release: 0.6, loop: true, fallback: 'synth' },
   nylon: { label: 'Nylon guitar', gm: 'acoustic_guitar_nylon', gain: 1, release: 0.25, fallback: 'grand' },
+  user: { label: 'My recorded sound', user: true, gain: 1, release: 0.25, fallback: 'grand' },
   'synth-grand': { label: 'Built-in piano (works offline)', synth: 'grand' },
   'synth-epiano': { label: 'Built-in electric piano (offline)', synth: 'epiano' },
   'synth-organ': { label: 'Built-in organ (offline)', synth: 'organ' },
@@ -60,6 +61,13 @@ class SampleSet {
     this.active = 0;
   }
 
+  /** For the "My recorded sound" slot: one sample, pitched from its root note. */
+  setUserBuffer(buffer, root) {
+    this.buffers.clear();
+    if (buffer) this.buffers.set(`0:${root}`, buffer);
+    this.userRoot = root;
+  }
+
   get progress() { return this.total ? (this.done + this.failed) / this.total : 1; }
   get loading() { return this.done + this.failed < this.total; }
   get unavailable() { return this.total > 0 && this.failed > this.total / 2; }
@@ -73,7 +81,7 @@ class SampleSet {
 
   /** Queue the samples needed for notes lo..hi, nearest to `focus` first. Main layer before others. */
   load(lo, hi, focus = (lo + hi) / 2) {
-    if (!this.engine.ctx) return;
+    if (!this.engine.ctx || this.def.user) return;
     const grid = [];
     for (let m = 21; m <= 108; m += 3) if (m >= lo - 2 && m <= hi + 2) grid.push(m);
     grid.sort((a, b) => Math.abs(a - focus) - Math.abs(b - focus));
@@ -127,6 +135,10 @@ class SampleSet {
   }
 
   #nearest(li, midi) {
+    if (this.def.user) {
+      const b = this.buffers.get(`0:${this.userRoot}`);
+      return b ? { buf: b, root: this.userRoot } : null;
+    }
     // Prefer the closest sample; look further out while the closest is still downloading.
     let best = null;
     for (let d = 0; d <= 12; d++) {
@@ -141,20 +153,20 @@ class SampleSet {
   }
 
   /** Plays a note. Returns a voice with release(), or null if nothing is loaded yet. */
-  play(midi, velocity, dest, pan = 0) {
+  play(midi, velocity, dest, pan = 0, when = 0) {
     const ctx = this.engine.ctx;
     if (!ctx) return null;
     let li = this.layers.findIndex((l) => velocity <= l.upTo);
     if (li < 0) li = this.layers.length - 1;
     let hit = this.#nearest(li, midi);
-    if (!hit || Math.abs(hit.root - midi) > 2) {
+    if (!this.def.user && (!hit || Math.abs(hit.root - midi) > 2)) {
       for (let j = 0; j < this.layers.length && (!hit || Math.abs(hit.root - midi) > 2); j++) {
         const alt = this.#nearest(j, midi);
         if (alt && (!hit || Math.abs(alt.root - midi) < Math.abs(hit.root - midi))) { hit = alt; li = j; }
       }
     }
     if (!hit) return null;
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + Math.max(0, when);
     const src = ctx.createBufferSource();
     src.buffer = hit.buf;
     src.playbackRate.value = Math.pow(2, (midi - hit.root) / 12);
@@ -182,13 +194,18 @@ class SampleSet {
     const release = this.def.release || 0.3;
     let released = false;
     return {
-      release() {
+      release(at) {
         if (released) return;
         released = true;
-        const n = ctx.currentTime;
-        amp.gain.cancelScheduledValues(n);
-        amp.gain.setValueAtTime(amp.gain.value, n);
-        amp.gain.setTargetAtTime(0, n, release / 4);
+        let n = ctx.currentTime;
+        if (at && at > n + 0.005) {
+          n = at;
+          amp.gain.setTargetAtTime(0, n, release / 4);
+        } else {
+          amp.gain.cancelScheduledValues(n);
+          amp.gain.setValueAtTime(amp.gain.value, n);
+          amp.gain.setTargetAtTime(0, n, release / 4);
+        }
         try { src.stop(n + release * 2 + 0.05); } catch (e) { /* already stopped */ }
       },
     };

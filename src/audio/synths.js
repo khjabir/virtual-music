@@ -196,11 +196,11 @@ export const KEY_PATCHES = {
 };
 
 /** Starts a keyboard note. Returns an object with release(). */
-export function keyNote(engine, channel, midi, velocity = 0.7, patch = 'grand') {
+export function keyNote(engine, channel, midi, velocity = 0.7, patch = 'grand', when = 0) {
   const ctx = engine.ctx;
   if (!ctx || !channel) return { release() {} };
   const f = midiToFreq(midi);
-  const t = ctx.currentTime;
+  const t = ctx.currentTime + Math.max(0, when);
   const v = clamp(velocity, 0.05, 1);
   const amp = ctx.createGain();
   amp.gain.value = 0;
@@ -313,14 +313,21 @@ export function keyNote(engine, channel, midi, velocity = 0.7, patch = 'grand') 
   if (endAt) nodes.forEach((n) => n.stop(endAt));
   let released = false;
   return {
-    release() {
+    /** Release now, or at a scheduled audio time. */
+    release(at) {
       if (released) return;
       released = true;
-      const n = ctx.currentTime;
-      amp.gain.cancelScheduledValues(n);
-      amp.gain.setValueAtTime(amp.gain.value, n);
-      amp.gain.setTargetAtTime(0, n, releaseTau);
-      nodes.forEach((o) => { try { o.stop(n + releaseTau * 8 + tail * 0.2); } catch (e) { /* stopped */ } });
+      const now = ctx.currentTime;
+      if (at && at > now + 0.005) {
+        amp.gain.cancelScheduledValues(at);
+        amp.gain.setTargetAtTime(0, at, releaseTau);
+      } else {
+        at = now;
+        amp.gain.cancelScheduledValues(now);
+        amp.gain.setValueAtTime(amp.gain.value, now);
+        amp.gain.setTargetAtTime(0, now, releaseTau);
+      }
+      nodes.forEach((o) => { try { o.stop(at + releaseTau * 8 + tail * 0.2); } catch (e) { /* stopped */ } });
     },
   };
 }
@@ -441,12 +448,12 @@ export const MALLET_KINDS = {
   steel: { label: 'Steel drum', ratios: [1, 2, 3, 4.1], amps: [1, 0.55, 0.3, 0.12], decay: 0.9, transpose: 12, click: 0.03 },
 };
 
-export function mallet(engine, channel, midi, { velocity = 0.8, kind = 'marimba', pan = 0 } = {}) {
+export function mallet(engine, channel, midi, { velocity = 0.8, kind = 'marimba', pan = 0, when = 0 } = {}) {
   const ctx = engine.ctx;
   if (!ctx || !channel) return;
   const k = MALLET_KINDS[kind] || MALLET_KINDS.marimba;
   const f = midiToFreq(midi + k.transpose);
-  const t = ctx.currentTime;
+  const t = ctx.currentTime + Math.max(0, when);
   const v = clamp(velocity, 0.1, 1);
   const out = ctx.createGain();
   out.gain.value = 1;
@@ -551,4 +558,158 @@ export class ThereminVoice {
     this.amp.gain.setTargetAtTime(0, n, 0.05);
     this.oscs.forEach((o) => { try { o.stop(n + 0.5); } catch (e) { /* stopped */ } });
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* Band voices: bass, chord pads, bowed strings, user samples          */
+/* ------------------------------------------------------------------ */
+
+/** A round synth bass note at audio time t, lasting dur seconds. */
+export function bassNote(engine, dest, midi, vel, t, dur, kind = 'round') {
+  const ctx = engine.ctx;
+  if (!ctx) return;
+  const f = midiToFreq(midi);
+  const amp = ctx.createGain();
+  amp.gain.setValueAtTime(0.0001, t);
+  amp.gain.exponentialRampToValueAtTime(0.5 * vel, t + 0.008);
+  amp.gain.setTargetAtTime(0.3 * vel, t + 0.01, 0.15);
+  amp.gain.setTargetAtTime(0.0001, t + dur, 0.06);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.Q.value = kind === 'pluck' ? 6 : 1.5;
+  lp.frequency.setValueAtTime(kind === 'pluck' ? f * 12 : f * 6, t);
+  lp.frequency.setTargetAtTime(f * 2.5, t + 0.01, kind === 'pluck' ? 0.08 : 0.25);
+  const a = osc(ctx, 'sawtooth', f);
+  const sub = osc(ctx, 'sine', f / 2);
+  const subG = ctx.createGain();
+  subG.gain.value = 0.7;
+  a.connect(lp);
+  sub.connect(subG).connect(lp);
+  lp.connect(amp).connect(dest);
+  [a, sub].forEach((o) => { o.start(t); o.stop(t + dur + 0.5); });
+}
+
+/** A chord played as soft detuned saws (pad) or a short stab, at audio time t. */
+export function chordVoice(engine, dest, midis, vel, t, dur, kind = 'pad') {
+  const ctx = engine.ctx;
+  if (!ctx) return;
+  const amp = ctx.createGain();
+  const peak = (kind === 'stab' ? 0.16 : 0.1) * vel;
+  amp.gain.setValueAtTime(0.0001, t);
+  amp.gain.exponentialRampToValueAtTime(peak, t + (kind === 'pad' ? 0.25 : 0.01));
+  amp.gain.setTargetAtTime(0.0001, t + (kind === 'stab' ? Math.min(dur, 0.18) : dur), kind === 'pad' ? 0.35 : 0.08);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = kind === 'pad' ? 1600 : 2600;
+  lp.Q.value = 0.7;
+  lp.connect(amp).connect(dest);
+  const end = t + dur + 1.6;
+  for (const m of midis) {
+    const f = midiToFreq(m);
+    for (const det of [-7, 7]) {
+      const o = osc(ctx, kind === 'pad' ? 'sawtooth' : 'square', f, det);
+      o.connect(lp);
+      o.start(t);
+      o.stop(end);
+    }
+  }
+}
+
+/**
+ * Bowed string (violin, cello): sawtooth through body resonances, plus bow noise.
+ * set(freq, level, brightness) is called continuously by the bowing hand.
+ */
+export const BOWED_KINDS = {
+  violin: { label: 'Violin', body: [[290, 6, 4], [520, 4, 3], [2900, 2.5, 5]], low: 55, high: 88 },
+  viola: { label: 'Viola', body: [[230, 6, 4], [440, 4, 3], [2400, 2.5, 4]], low: 48, high: 81 },
+  cello: { label: 'Cello', body: [[110, 5, 5], [240, 4, 4], [1600, 2.5, 4]], low: 36, high: 69 },
+};
+
+export class BowedVoice {
+  constructor(engine, dest, kind = 'violin') {
+    const ctx = engine.ctx;
+    this.ctx = ctx;
+    const k = BOWED_KINDS[kind] || BOWED_KINDS.violin;
+    const t = ctx.currentTime;
+    this.amp = ctx.createGain();
+    this.amp.gain.value = 0;
+    this.tone = ctx.createBiquadFilter();
+    this.tone.type = 'lowpass';
+    this.tone.frequency.value = 2500;
+    this.tone.Q.value = 0.6;
+    let last = this.tone;
+    for (const [fq, q, gain] of k.body) {
+      const pk = ctx.createBiquadFilter();
+      pk.type = 'peaking';
+      pk.frequency.value = fq;
+      pk.Q.value = q;
+      pk.gain.value = gain;
+      last.connect(pk);
+      last = pk;
+    }
+    last.connect(this.amp).connect(dest);
+    this.a = osc(ctx, 'sawtooth', 220, -4);
+    this.b = osc(ctx, 'sawtooth', 220, 5);
+    const bg = ctx.createGain();
+    bg.gain.value = 0.5;
+    this.a.connect(this.tone);
+    this.b.connect(bg).connect(this.tone);
+    // Bow hair noise, following the pitch
+    this.noise = engine.noiseSource();
+    this.noiseBp = ctx.createBiquadFilter();
+    this.noiseBp.type = 'bandpass';
+    this.noiseBp.Q.value = 1.5;
+    this.noiseG = ctx.createGain();
+    this.noiseG.gain.value = 0;
+    this.noise.connect(this.noiseBp).connect(this.noiseG).connect(this.amp);
+    // Vibrato
+    this.lfo = osc(ctx, 'sine', 5.6);
+    this.vib = ctx.createGain();
+    this.vib.gain.value = 0;
+    this.lfo.connect(this.vib);
+    this.vib.connect(this.a.detune);
+    this.vib.connect(this.b.detune);
+    [this.a, this.b, this.lfo].forEach((o) => o.start(t));
+    this.noise.start(t);
+  }
+
+  set(freq, level, brightness = 0.5, vibratoCents = 0) {
+    const n = this.ctx.currentTime;
+    this.a.frequency.setTargetAtTime(freq, n, 0.02);
+    this.b.frequency.setTargetAtTime(freq, n, 0.02);
+    this.noiseBp.frequency.setTargetAtTime(Math.min(8000, freq * 4), n, 0.05);
+    const L = Math.max(0, Math.min(1, level));
+    this.amp.gain.setTargetAtTime(L * 0.32, n, 0.035);
+    this.noiseG.gain.setTargetAtTime(L * 0.05, n, 0.03);
+    this.tone.frequency.setTargetAtTime(900 + 6000 * brightness * L, n, 0.05);
+    this.vib.gain.setTargetAtTime(vibratoCents, n, 0.2);
+  }
+
+  stop() {
+    const n = this.ctx.currentTime;
+    this.amp.gain.setTargetAtTime(0, n, 0.05);
+    [this.a, this.b, this.lfo, this.noise].forEach((o) => { try { o.stop(n + 0.5); } catch (e) { /* stopped */ } });
+  }
+}
+
+/** Plays an AudioBuffer (a user's own sound) pitched relative to its root note. */
+export function playBuffer(engine, dest, buffer, { velocity = 0.8, rate = 1, when = 0, pan = 0 } = {}) {
+  const ctx = engine.ctx;
+  if (!ctx || !buffer) return null;
+  const t = ctx.currentTime + Math.max(0, when);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = rate;
+  const g = ctx.createGain();
+  g.gain.value = 0.15 + 0.85 * velocity * velocity;
+  src.connect(g);
+  connectPanned(ctx, g, dest, pan);
+  src.start(t);
+  return {
+    release(at) {
+      const n = Math.max(ctx.currentTime, at || 0);
+      g.gain.setTargetAtTime(0, n, 0.08);
+      try { src.stop(n + 0.6); } catch (e) { /* stopped */ }
+    },
+  };
 }

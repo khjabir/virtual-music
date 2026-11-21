@@ -2,6 +2,7 @@ import { Instrument } from './base.js';
 import { FONT } from './common.js';
 import { scaleRange, snapToScale, noteColor, noteName, midiToFreq, pitchClass, clamp } from '../audio/music.js';
 import { ThereminVoice, THEREMIN_KINDS } from '../audio/synths.js';
+import { later } from '../core/bus.js';
 
 export class Theremin extends Instrument {
   static id = 'theremin';
@@ -51,7 +52,7 @@ export class Theremin extends Instrument {
     super.deactivate();
   }
 
-  update(hands, dt) {
+  update(hands, dt, t = 0) {
     if (!this.voice && this.channel) this.voice = new ThereminVoice(this.engine, this.channel, this.opts.kind);
     const lefty = this.global.lefty;
     const sorted = [...hands].sort((a, b) => a.points[8].x - b.points[8].x);
@@ -80,7 +81,32 @@ export class Theremin extends Instrument {
     if (this.trail.length > 36) this.trail.shift();
     this.level += (target - this.level) * Math.min(1, dt * 12);
     this.pitchPoint = pitchHand ? pitchHand.points[8] : null;
-    if (this.voice) this.voice.set(midiToFreq(this.midi), target);
+    // Raised eyebrows (face control) bend the pitch up.
+    const played = this.midi + (this.app.faceBend || 0);
+    if (this.voice) this.voice.set(midiToFreq(played), target);
+    this.report(played, target, t);
+  }
+
+  /** Continuous instruments announce their pitch and loudness a few dozen times a second. */
+  report(midi, level, t) {
+    const last = this.lastReport;
+    const changed = !last || Math.abs(midi - last.midi) > 0.04 || Math.abs(level - last.level) > 0.03;
+    if (!changed || (last && t - last.t < 0.035 && level > 0)) return;
+    if (last && last.level === 0 && level === 0) return;
+    this.lastReport = { midi, level, t };
+    const p = this.pitchPoint;
+    this.emit({ type: 'cont', key: 'voice', midi, level, x: p ? p.x : this.W / 2, y: p ? p.y : this.H / 2 });
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type !== 'cont' || !this.channel) return;
+    if (!this.pbVoice) this.pbVoice = new ThereminVoice(this.engine, this.channel, this.opts.kind);
+    later(when, () => { if (this.pbVoice) this.pbVoice.set(midiToFreq(evt.midi), evt.level); });
+  }
+
+  stopPlayback() {
+    if (this.pbVoice) this.pbVoice.stop();
+    this.pbVoice = null;
   }
 
   draw(ctx) {

@@ -2,6 +2,7 @@ import { Instrument } from './base.js';
 import { VString, CrossingDetector, pluckVelocity, FONT } from './common.js';
 import { scaleNotes, noteColor, pitchClassName } from '../audio/music.js';
 import { pluck, pluckChannel, prewarmPluck } from '../audio/synths.js';
+import { later } from '../core/bus.js';
 
 const FINGER_SETS = { one: [8], two: [8, 12], all: [4, 8, 12, 16, 20] };
 
@@ -59,15 +60,21 @@ export class Harp extends Instrument {
       s.lastPluck = t;
       const vel = pluckVelocity(hit.normalSpeed, this.H);
       if (s.voice) s.voice.stop(0.04);
-      s.voice = pluck(this.engine, this.channel, s.midi, {
-        velocity: vel,
-        preset: this.opts.sound,
-        when: hit.u * Math.min(hit.hand.sampleDt, 0.05),
-        pan: (s.a.x / this.W - 0.5) * 1.3,
-      });
+      const delay = hit.u * Math.min(hit.hand.sampleDt, 0.05);
+      s.voice = pluck(this.engine, this.channel, s.midi, { velocity: vel, preset: this.opts.sound, when: delay, pan: (s.a.x / this.W - 0.5) * 1.3 });
       s.excite(vel);
+      this.emit({ type: 'hit', key: s.midi, midi: s.midi, vel, delay, x: hit.point.x, y: hit.point.y });
     }
     this.strings.forEach((s) => s.step(dt));
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type !== 'hit') return;
+    pluck(this.engine, this.channel, evt.midi, { velocity: evt.vel, preset: this.opts.sound, when, pan: 0 });
+    if (this.onScreen) {
+      const s = this.strings.find((x) => x.midi === evt.midi);
+      if (s) later(when, () => s.excite(evt.vel));
+    }
   }
 
   draw(ctx) {

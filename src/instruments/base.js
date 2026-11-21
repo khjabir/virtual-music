@@ -43,6 +43,24 @@ export class Instrument {
     return { top, bottom, left: this.W * 0.04, right: this.W * 0.96 };
   }
 
+  get onScreen() { return this.app.instrument === this; }
+
+  /**
+   * Announce a note to the rest of the app (loop station, replays, MIDI, scoring, effects).
+   * `delay` (seconds) marks notes scheduled slightly ahead, like the strings of a strum.
+   */
+  emit(evt) {
+    evt.inst = this.id;
+    evt.t = this.engine.now + (evt.delay || 0);
+    this.app.bus.emit(evt);
+  }
+
+  /** Re-create a recorded event: its sound, plus its visuals when on screen. `when` is seconds from now. */
+  playEvent(/* evt, when */) {}
+
+  /** Silence anything started by playEvent (the loop stopped, a replay ended). */
+  stopPlayback() {}
+
   activate() {}
   /** Called once audio has been unlocked (after the first click). */
   audioReady() {}

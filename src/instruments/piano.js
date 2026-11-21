@@ -8,6 +8,7 @@ import { keyNote } from '../audio/synths.js';
 import { KEYBOARD_SOUNDS, sampleSet } from '../audio/sampler.js';
 import { KeyboardRow, ZOOM_STEPS } from './piano/keyboardRow.js';
 import { FingerTaps, DipPress } from './piano/fingerPress.js';
+import { later } from '../core/bus.js';
 
 const SOUND_OPTIONS = Object.entries(KEYBOARD_SOUNDS).map(([k, v]) => [k, v.label]);
 const RANGES = { 49: [36, 84], 61: [36, 96], 76: [28, 103], 88: [21, 108] };
@@ -61,6 +62,8 @@ export class Piano extends Instrument {
     this.grabs = new Map(); // hand id -> row index while pinch-dragging the overview
     this.pinchSince = new Map();
     this.keysDown = new Map();
+    this.pbVoices = new Map(); // notes played back by the loop station or a replay
+    this.pbHeld = new Set();
     this.nav = null;
     this.lastSampleCheck = 0;
     this.camHandsSeen = false;
@@ -192,6 +195,7 @@ export class Piano extends Instrument {
         <button class="nav-btn" type="button" data-dwell data-act="zoomout" aria-label="Zoom out: more keys" title="Zoom out (−)">${ICON_MINUS}</button>
         <button class="chip" type="button" data-dwell data-act="sustain" aria-pressed="false" title="Sustain (hold Space)">Sustain</button>
         <button class="chip" type="button" data-dwell data-act="labels">C labels</button>
+        <button class="chip" type="button" data-dwell data-act="calibrate" title="Measure your taps and set the sensitivity to match">Calibrate</button>
         <select class="chip-select" aria-label="Sound">${SOUND_OPTIONS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
         <span class="nav-status" aria-live="polite"></span>
       </div>`;
@@ -236,6 +240,8 @@ export class Piano extends Instrument {
       this.zoom(act === 'zoomin' ? -1 : 1);
     } else if (act === 'sustain') {
       this.app.updateSetting(this.id, 'sustain', !this.opts.sustain);
+    } else if (act === 'calibrate') {
+      this.app.coach.calibratePiano();
     } else if (act === 'labels') {
       const next = LABEL_CYCLE[(LABEL_CYCLE.indexOf(this.opts.labels) + 1) % LABEL_CYCLE.length];
       this.app.updateSetting(this.id, 'labels', next);
@@ -285,7 +291,10 @@ export class Piano extends Instrument {
     const v = this.playSound(row, midi, vel);
     if (v) this.voices.set(k, v); else this.voices.delete(k);
     this.flash.set(k, 1);
-    if (this.opts.trails && row === 0) this.trails.push({ midi, t0: t, t1: null, k });
+    if (this.opts.trails && row === 0 && !this.gameMode) this.trails.push({ midi, t0: t, t1: null, k });
+    const r = this.rows[row];
+    const key = r && r.byMidi.get(midi);
+    this.emit({ type: 'on', key: k, row, midi, vel, slide: !!this.sliding, x: key ? r.centerX(key) : this.W / 2, y: r ? r.rect.y : this.H / 2 });
   }
 
   noteOff(row, midi, t) {
@@ -293,6 +302,7 @@ export class Piano extends Instrument {
     const n = (this.held.get(k) || 1) - 1;
     if (n > 0) { this.held.set(k, n); return; }
     this.held.delete(k);
+    this.emit({ type: 'off', key: k, row, midi });
     for (let i = this.trails.length - 1; i >= 0; i--) {
       if (this.trails[i].k === k && this.trails[i].t1 == null) { this.trails[i].t1 = t; break; }
     }
@@ -307,17 +317,48 @@ export class Piano extends Instrument {
     }
   }
 
-  playSound(row, midi, vel) {
+  playSound(row, midi, vel, when = 0) {
     const ch = this.channel;
     if (!ch) return null;
     const id = this.soundFor(row);
     const def = KEYBOARD_SOUNDS[id] || KEYBOARD_SOUNDS.grand;
     const pan = clamp((midi - 66) / 40, -0.7, 0.7);
     if (!def.synth) {
-      const v = sampleSet(this.engine, id).play(midi, vel, ch.input, pan);
+      const v = sampleSet(this.engine, id).play(midi, vel, ch.input, pan, when);
       if (v) return v;
     }
-    return keyNote(this.engine, ch, midi, vel, def.synth || def.fallback || 'grand');
+    return keyNote(this.engine, ch, midi, vel, def.synth || def.fallback || 'grand', when);
+  }
+
+  playEvent(evt, when = 0) {
+    const k = `${evt.row || 0}:${evt.midi}`;
+    if (evt.type === 'on') {
+      const old = this.pbVoices.get(k);
+      if (old) old.release(this.engine.now + when);
+      const v = this.playSound(evt.row || 0, evt.midi, evt.vel, when);
+      if (v) this.pbVoices.set(k, v);
+      if (this.onScreen) {
+        later(when, () => {
+          this.pbHeld.add(k);
+          this.flash.set(k, 1);
+          if (this.opts.trails && !this.gameMode && (evt.row || 0) === 0) this.trails.push({ midi: evt.midi, t0: performance.now() / 1000, t1: null, k: `pb${k}` });
+        });
+      }
+    } else if (evt.type === 'off') {
+      const v = this.pbVoices.get(k);
+      if (v) { v.release(this.engine.now + when); this.pbVoices.delete(k); }
+      later(when, () => {
+        this.pbHeld.delete(k);
+        const tr = [...this.trails].reverse().find((x) => x.k === `pb${k}` && x.t1 == null);
+        if (tr) tr.t1 = performance.now() / 1000;
+      });
+    }
+  }
+
+  stopPlayback() {
+    this.pbVoices.forEach((v) => v.release());
+    this.pbVoices.clear();
+    this.pbHeld.clear();
   }
 
   releaseSustained() {
@@ -416,6 +457,7 @@ export class Piano extends Instrument {
     const k = fk.white ? row.whiteAt(x) : row.blackAt(x);
     if (!k || k.midi === fk.midi) return;
     const dir = Math.sign(k.midi - fk.midi);
+    this.sliding = true;
     for (let m = fk.midi + dir; m !== k.midi; m += dir) {
       const passed = row.byMidi.get(m);
       if (!passed || passed.white !== fk.white) continue;
@@ -424,6 +466,7 @@ export class Piano extends Instrument {
     }
     this.noteOff(fk.row, fk.midi, t);
     this.noteOn(fk.row, k.midi, fk.vel * 0.95, t);
+    this.sliding = false;
     fk.midi = k.midi;
     fk.x = x;
   }
@@ -519,7 +562,7 @@ export class Piano extends Instrument {
     this.drawTrails(ctx, t);
     this.rows.forEach((row, i) => {
       row.draw(ctx, {
-        held: (m) => this.held.has(`${i}:${m}`),
+        held: (m) => this.held.has(`${i}:${m}`) || this.pbHeld.has(`${i}:${m}`),
         flash: (m) => this.flash.get(`${i}:${m}`) || 0,
         hover: (m) => this.hover.has(`${i}:${m}`),
         labels: o.labels,

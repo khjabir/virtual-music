@@ -2,6 +2,7 @@ import { Instrument } from './base.js';
 import { VString, CrossingDetector, pluckVelocity, projectT, signedDistance, FONT } from './common.js';
 import { scaleNotes, noteColor, noteName, clamp } from '../audio/music.js';
 import { pluck, pluckChannel, prewarmPluck } from '../audio/synths.js';
+import { later } from '../core/bus.js';
 
 const MAX_STRINGS = 14;
 const RANGES = { low: 36, mid: 45, high: 55 };
@@ -87,6 +88,13 @@ export class StringCanvas extends Instrument {
     if (s.voice) s.voice.stop(0.03);
     s.voice = pluck(this.engine, this.channel, s.midi, { velocity: vel, preset: this.opts.sound, when, pan: ((s.a.x + s.b.x) / 2 / this.W - 0.5) * 1.2 });
     s.excite(vel);
+    this.emit({ type: 'hit', key: s.midi, midi: s.midi, vel, delay: when, x: (s.a.x + s.b.x) / 2, y: (s.a.y + s.b.y) / 2 });
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type !== 'hit') return;
+    pluck(this.engine, this.channel, evt.midi, { velocity: evt.vel, preset: this.opts.sound, when });
+    if (this.onScreen) later(when, () => this.strings.filter((x) => x.midi === evt.midi).forEach((x) => x.excite(evt.vel)));
   }
 
   update(hands, dt, t) {

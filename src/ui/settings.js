@@ -3,21 +3,37 @@
 import { NOTE_NAMES, SCALES } from '../audio/music.js';
 
 export const GLOBAL_SCHEMA = [
-  { key: 'volume', label: 'Volume', type: 'range', min: 0, max: 1, step: 0.01, default: 0.8 },
-  { key: 'reverb', label: 'Reverb', type: 'range', min: 0, max: 1, step: 0.01, default: 0.35 },
-  { key: 'key', label: 'Key', type: 'select', options: NOTE_NAMES.map((n, i) => [i, n]), default: 0 },
-  { key: 'scale', label: 'Scale', type: 'select', options: Object.entries(SCALES).map(([k, v]) => [k, v.label]), default: 'pentaMajor' },
-  { key: 'cameraView', label: 'Camera view', type: 'select', options: [['clear', 'Clear, full brightness'], ['soft', 'Soft, lightly shaded'], ['dim', 'Dimmed, so instruments stand out'], ['off', 'Hidden (tracking keeps working)']], default: 'soft' },
-  { key: 'cameraQuality', label: 'Camera quality', type: 'select', options: [['720', 'HD 720p, lightest on your computer'], ['1080', 'Full HD 1080p'], ['max', 'Highest your camera supports, up to 4K']], default: '1080' },
-  { key: 'skeleton', label: 'Show hand outline', type: 'toggle', default: true },
-  { key: 'lefty', label: 'Left-handed layout', type: 'toggle', default: false },
+  { group: 'Sound', key: 'volume', label: 'Volume', type: 'range', min: 0, max: 1, step: 0.01, default: 0.8 },
+  { group: 'Sound', key: 'reverb', label: 'Reverb', type: 'range', min: 0, max: 1, step: 0.01, default: 0.35 },
+  { group: 'Sound', key: 'key', label: 'Key', type: 'select', options: NOTE_NAMES.map((n, i) => [i, n]), default: 0 },
+  { group: 'Sound', key: 'scale', label: 'Scale', type: 'select', options: Object.entries(SCALES).map(([k, v]) => [k, v.label]), default: 'pentaMajor' },
+  { group: 'Camera', key: 'cameraView', label: 'Camera view', type: 'select', options: [['clear', 'Clear, full brightness'], ['soft', 'Soft, lightly shaded'], ['dim', 'Dimmed, so instruments stand out'], ['off', 'Hidden (tracking keeps working)']], default: 'soft' },
+  { group: 'Camera', key: 'cameraQuality', label: 'Camera quality', type: 'select', options: [['720', 'HD 720p, lightest on your computer'], ['1080', 'Full HD 1080p'], ['max', 'Highest your camera supports, up to 4K']], default: '1080' },
+  { group: 'Camera', key: 'background', label: 'Background', type: 'select', options: [['none', 'Your room'], ['blur', 'Your room, blurred'], ['stage', 'Concert stage'], ['synthwave', 'Neon sunset'], ['space', 'Outer space'], ['studio', 'Cosy studio']], default: 'none' },
+  { group: 'Look', key: 'handStyle', label: 'Hands', type: 'select', options: [['outline', 'Outline'], ['trails', 'Light trails'], ['hologram', 'Hologram'], ['minimal', 'Fingertips only']], default: 'outline' },
+  { group: 'Look', key: 'effects', label: 'Effects', type: 'select', options: [['off', 'Off'], ['normal', 'Sparks and glow'], ['party', 'Party: more sparks, shake and light beams']], default: 'normal' },
+  { group: 'Controls', key: 'fxHand', label: 'Effects hand', type: 'select', options: [['off', 'Off'], ['left', 'Left hand shapes the sound'], ['right', 'Right hand shapes the sound']], default: 'off' },
+  { group: 'Controls', key: 'face', label: 'Face control', type: 'select', options: [['off', 'Off'], ['on', 'On: mouth filter, eyebrow bend, smile echo']], default: 'off' },
+  { group: 'Controls', key: 'players', label: 'Players', type: 'select', options: [[1, 'One player (two hands)'], [2, 'Two players (four hands)']], default: 1 },
+  { group: 'Controls', key: 'lefty', label: 'Left-handed layout', type: 'toggle', default: false },
+  { group: 'Tracking', key: 'tracking', label: 'Hand tracking runs', type: 'select', options: [['main', 'On the page (default)'], ['worker', 'In the background (smoother on slow computers)']], default: 'main' },
+  { group: 'Tracking', key: 'predict', label: 'Motion prediction', type: 'select', options: [[0, 'Off'], [0.015, 'A little (15 ms ahead)'], [0.03, 'More (30 ms ahead)']], default: 0 },
 ];
+
+export const GROUP_TITLES = {
+  Sound: 'Sound',
+  Camera: 'Camera and background',
+  Look: 'Look',
+  Controls: 'Controls',
+  Tracking: 'Tracking and latency',
+};
 
 const STORAGE_KEY = 'virtual-music:settings:v1';
 
 export class Settings {
   constructor() {
     this.data = { global: {}, instruments: {}, last: null };
+    this.override = null; // settings borrowed for a replay; never saved
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) Object.assign(this.data, JSON.parse(raw));
@@ -30,9 +46,15 @@ export class Settings {
     return out;
   }
 
-  get global() { return this.#fill(GLOBAL_SCHEMA, this.data.global); }
+  get global() {
+    const o = this.override && this.override.global;
+    return this.#fill(GLOBAL_SCHEMA, o ? { ...this.data.global, ...o } : this.data.global);
+  }
 
-  instrument(id, schema) { return this.#fill(schema, this.data.instruments[id]); }
+  instrument(id, schema) {
+    const o = this.override && this.override.instruments && this.override.instruments[id];
+    return this.#fill(schema, o ? { ...this.data.instruments[id], ...o } : this.data.instruments[id]);
+  }
 
   set(scope, key, value) {
     if (scope === 'global') this.data.global[key] = value;
@@ -55,9 +77,16 @@ export class Settings {
 }
 
 /** Builds form controls for a schema. onChange(key, value) fires with typed values. */
-export function renderControls(container, schema, values, onChange) {
+export function renderControls(container, schema, values, onChange, titles = null) {
   container.replaceChildren();
+  let group = null;
   for (const s of schema) {
+    if (titles && s.group && s.group !== group) {
+      group = s.group;
+      const h = document.createElement('h3');
+      h.textContent = titles[group] || group;
+      container.append(h);
+    }
     const id = `set-${Math.random().toString(36).slice(2, 8)}`;
     const row = document.createElement('div');
     row.className = `control control-${s.type}`;

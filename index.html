@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Virtual Music</title>
-  <meta name="description" content="Play guitar, piano, drums, harp, marimba and theremin in the air. Your webcam tracks your hands; everything runs in the browser.">
+  <meta name="description" content="Play guitar, piano, drums, harp, marimba, theremin, violin and a launchpad in the air. Your webcam tracks your hands; everything runs in the browser.">
   <meta name="theme-color" content="#12142B">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2312142B'/%3E%3Cpath d='M6 22 26 9' stroke='%23FFD166' stroke-width='2.5' stroke-linecap='round'/%3E%3Cpath d='M6 15 20 6' stroke='%23EDEBFF' stroke-width='1.5' stroke-linecap='round' opacity='.6'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,24 +14,93 @@
 </head>
 <body>
   <video id="video" playsinline muted aria-hidden="true"></video>
+  <canvas id="camLayer" aria-hidden="true"></canvas>
   <canvas id="stage" aria-label="Instrument stage"></canvas>
 
   <header class="topbar">
     <div class="brand">Virtual Music</div>
     <nav class="tabs" id="instrumentTabs" aria-label="Instruments"></nav>
-    <button class="icon-btn" id="viewBtn" type="button" data-dwell aria-label="Change camera view" title="Camera view" hidden>
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3.2"/></svg>
-    </button>
-    <button class="icon-btn" id="settingsBtn" type="button" data-dwell aria-label="Settings" aria-expanded="false" aria-controls="drawer" title="Settings (comma key)">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
-    </button>
+    <div class="tools">
+      <button class="pill" id="songsBtn" type="button" data-dwell title="Play songs and today’s challenge">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5.5l11-2.5v12.5"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/></svg><span>Songs</span>
+      </button>
+      <button class="pill" id="bandBtn" type="button" data-dwell aria-expanded="false" aria-controls="bandPanel" title="Tempo, backing band and loop station">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7"/><path d="M4 4v4h4"/><path d="M12 8v4l2.5 2"/></svg><span>Band</span>
+      </button>
+      <button class="pill rec" id="recordBtn" type="button" data-dwell aria-haspopup="true" title="Record a clip to share">
+        <span class="rec-dot" aria-hidden="true"></span><span id="recordLabel">Record</span>
+      </button>
+      <button class="icon-btn" id="howBtn" type="button" data-dwell aria-label="How to play this instrument" title="How to play">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.8"/><path d="M12 17.2v.1"/></svg>
+      </button>
+      <button class="icon-btn" id="viewBtn" type="button" data-dwell aria-label="Change camera view" title="Camera view" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3.2"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" type="button" data-dwell aria-label="Settings" aria-expanded="false" aria-controls="drawer" title="Settings (comma key)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+      </button>
+    </div>
   </header>
 
   <div class="actions" id="instrumentActions" hidden></div>
 
+  <div class="popover" id="recordMenu" hidden role="menu" aria-label="Record">
+    <button type="button" role="menuitem" data-rec="vertical" data-dwell><b>Vertical clip</b><span>9:16 for Reels, Shorts and TikTok</span></button>
+    <button type="button" role="menuitem" data-rec="landscape" data-dwell><b>Landscape clip</b><span>16:9, exactly what you see</span></button>
+    <button type="button" role="menuitem" data-rec="replay" data-dwell><b>Replay link only</b><span>A tiny link that plays your performance back, no video</span></button>
+  </div>
+  <div class="countdown" id="countdown" hidden aria-live="assertive"></div>
+
+  <div class="coach" id="coach" hidden role="status" aria-live="polite">
+    <p class="coach-step" id="coachStep"></p>
+    <p class="coach-text" id="coachText"></p>
+    <button class="chip" id="coachSkip" type="button" data-dwell>Skip</button>
+  </div>
+
+  <div class="game-bar" id="gameBar" hidden>
+    <button class="chip" id="gamePause" type="button" data-dwell>Pause</button>
+    <button class="chip" id="gameRestart" type="button" data-dwell>Restart</button>
+    <button class="chip" id="gameQuit" type="button" data-dwell>Quit</button>
+  </div>
+
   <footer class="bottombar">
-    <p class="hint" id="hint"></p>
-    <p class="status" id="status" data-state="idle"><span class="dot" aria-hidden="true"></span><span id="statusText">Ready</span></p>
+    <section class="panel band" id="bandPanel" hidden aria-label="Band">
+      <div class="band-progress"><span id="loopProgress"></span></div>
+      <div class="band-group">
+        <button class="chip strong" id="bandPlay" type="button" data-dwell aria-pressed="false">Play</button>
+        <span class="tempo">
+          <button class="chip square" id="bpmDown" type="button" data-dwell aria-label="Slower">−</button>
+          <span class="bpm"><b id="bpmValue">96</b> BPM</span>
+          <button class="chip square" id="bpmUp" type="button" data-dwell aria-label="Faster">+</button>
+        </span>
+        <button class="chip" id="tapTempo" type="button" title="Tap three or more times to set the tempo">Tap tempo</button>
+        <button class="chip" id="metroBtn" type="button" data-dwell aria-pressed="false">Metronome</button>
+      </div>
+      <div class="band-group">
+        <label class="band-label" for="backingSelect">Backing band</label>
+        <select class="chip-select" id="backingSelect"></select>
+        <span class="now-chord" id="nowChord" aria-live="polite"></span>
+      </div>
+      <div class="band-group grow">
+        <button class="chip rec-chip" id="loopRec" type="button" data-dwell>Record a loop</button>
+        <select class="chip-select" id="loopBars" aria-label="Loop length"><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option></select>
+        <select class="chip-select" id="loopQuant" aria-label="Snap notes to the beat"><option value="off">No snapping</option><option value="8">Snap to 1/8</option><option value="16" selected>Snap to 1/16</option></select>
+        <span class="layers" id="loopLayers"></span>
+        <span class="loop-empty" id="loopEmpty">Record a few bars, then switch instruments and layer more on top.</span>
+        <span class="band-end">
+          <button class="chip" id="loopUndo" type="button" data-dwell>Undo</button>
+          <button class="chip" id="loopClear" type="button" data-dwell>Clear</button>
+          <button class="chip" id="loopMidi" type="button" title="Download the loop as a MIDI file">Export MIDI</button>
+          <button class="icon-btn small" id="bandClose" type="button" data-dwell aria-label="Close the band panel">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </span>
+      </div>
+    </section>
+    <div class="bottom-row">
+      <p class="hint" id="hint"></p>
+      <p class="status" id="status" data-state="idle"><span class="dot" aria-hidden="true"></span><span id="statusText">Ready</span></p>
+    </div>
   </footer>
 
   <aside class="drawer" id="drawer" hidden aria-label="Settings">
@@ -46,7 +115,8 @@
     <section class="controls" id="instrumentSettings"></section>
     <button class="btn wide" id="cameraToggle" type="button" data-dwell>Turn camera on</button>
     <p class="camera-info" id="cameraInfo" aria-live="polite"></p>
-    <p class="shortcuts">Keys 1 to 7 switch instruments and the comma key opens settings. On the piano, the letter keys play notes (A W S E D F T G Y H U J K) and Space is the sustain pedal. Hold a fingertip over any button for a second to press it without touching the mouse.</p>
+    <section class="extras" id="extraSettings"></section>
+    <p class="shortcuts">Keys 1 to 9 switch instruments and the comma key opens settings. On the piano, the letter keys play notes (A W S E D F T G Y H U J K) and Space is the sustain pedal. Hold a fingertip over any button for a second to press it without touching the mouse.</p>
   </aside>
 
   <div class="start" id="start">
@@ -54,10 +124,62 @@
       <h1>Play the air.</h1>
       <p class="lede">Your webcam follows your hands. Strum strings, press piano keys and hit drums that only exist on screen.</p>
       <div class="start-actions">
+        <button class="btn primary" id="watchReplay" type="button" hidden>Watch the replay</button>
         <button class="btn primary" id="startCamera" type="button">Turn on camera</button>
         <button class="btn" id="startMouse" type="button">Play with mouse or touch</button>
       </div>
       <p class="fine" id="startMsg">Video never leaves this device. Hand tracking runs inside your browser.</p>
+    </div>
+  </div>
+
+  <div class="modal" id="songsModal" hidden role="dialog" aria-modal="true" aria-labelledby="songsTitle">
+    <div class="modal-card songs">
+      <div class="modal-head">
+        <h2 id="songsTitle">Songs</h2>
+        <button class="icon-btn small" id="songsClose" type="button" data-dwell aria-label="Close songs">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+      </div>
+      <button class="daily" id="dailyCard" type="button" data-dwell></button>
+      <div class="seg" id="songTabs" role="group" aria-label="Instrument">
+        <button type="button" data-inst="piano" data-dwell>Piano</button>
+        <button type="button" data-inst="drums" data-dwell>Drums</button>
+        <button type="button" data-inst="guitar" data-dwell>Guitar</button>
+      </div>
+      <div class="song-options">
+        <label id="songModeRow"><span>Mode</span><select id="songMode"><option value="play">Play along</option><option value="wait">Learn: waits for each note</option></select></label>
+        <label><span>Speed</span><select id="songSpeed"><option value="1">Full speed</option><option value="0.75">75%</option><option value="0.5">Half speed</option></select></label>
+        <label class="inline" id="songGuideRow"><input type="checkbox" id="songGuide" checked><span>Play the tune quietly as a guide</span></label>
+      </div>
+      <ul class="song-list" id="songList"></ul>
+    </div>
+  </div>
+
+  <div class="modal" id="resultsModal" hidden role="dialog" aria-modal="true" aria-labelledby="resTitle">
+    <div class="modal-card results">
+      <p class="res-song" id="resSong"></p>
+      <h2 id="resTitle"></h2>
+      <p class="res-stars" id="resStars" aria-hidden="true"></p>
+      <dl class="res-stats" id="resStats"></dl>
+      <div class="modal-actions">
+        <button class="btn primary" id="resAgain" type="button" data-dwell>Play again</button>
+        <button class="btn" id="resSongs" type="button" data-dwell>More songs</button>
+        <button class="btn" id="resClose" type="button" data-dwell>Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="clipModal" hidden role="dialog" aria-modal="true" aria-labelledby="clipTitle">
+    <div class="modal-card clip">
+      <h2 id="clipTitle">Your clip is ready</h2>
+      <video id="clipVideo" controls playsinline loop></video>
+      <p class="clip-info" id="clipInfo"></p>
+      <div class="modal-actions">
+        <button class="btn primary" id="clipDownload" type="button">Download</button>
+        <button class="btn" id="clipShare" type="button">Share</button>
+        <button class="btn" id="clipLink" type="button">Copy replay link</button>
+        <button class="btn" id="clipClose" type="button" data-dwell>Close</button>
+      </div>
     </div>
   </div>
 

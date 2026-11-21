@@ -108,6 +108,7 @@ export class FingerTaps {
           y: tip.y - Math.max(0, st.eff) * size,
           tip,
           progress: Math.max(0, Math.min(1, st.eff / threshold)),
+          eff: st.eff,
           down: st.down,
         });
       }

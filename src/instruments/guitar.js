@@ -2,6 +2,7 @@ import { Instrument } from './base.js';
 import { VString, CrossingDetector, pluckVelocity, roundRect, FONT } from './common.js';
 import { CHORD_SETS, chordNotes, GUITAR_TUNING, noteColor, noteName } from '../audio/music.js';
 import { pluck, pluckChannel, prewarmPluck } from '../audio/synths.js';
+import { later } from '../core/bus.js';
 
 const THICKNESS = [3.4, 2.8, 2.3, 1.9, 1.5, 1.2];
 
@@ -42,7 +43,14 @@ export class Guitar extends Instrument {
     this.layout();
   }
 
-  get chords() { return CHORD_SETS[this.opts.chordSet].chords; }
+  /** Song mode can swap in the chords a song needs. */
+  get chords() { return this.songChords || CHORD_SETS[this.opts.chordSet].chords; }
+
+  setSongChords(list) {
+    this.songChords = list && list.length ? list : null;
+    this.chordIndex = 0;
+    this.layout();
+  }
 
   layout() {
     const { W, H } = this;
@@ -105,16 +113,19 @@ export class Guitar extends Instrument {
       if (s.muted) { s.amp = Math.max(s.amp, 0.15); continue; }
       if (s.voice) s.voice.stop(0.03);
       const i = this.strings.indexOf(s);
-      s.voice = pluck(this.engine, this.channel, s.midi, {
-        velocity: vel,
-        preset: this.opts.sound,
-        when: hit.u * Math.min(hit.hand.sampleDt, 0.05),
-        pan: (i - 2.5) / 10,
-      });
+      const delay = hit.u * Math.min(hit.hand.sampleDt, 0.05);
+      s.voice = pluck(this.engine, this.channel, s.midi, { velocity: vel, preset: this.opts.sound, when: delay, pan: (i - 2.5) / 10 });
       s.excite(vel);
+      this.emit({ type: 'hit', key: `s${i}`, string: i, midi: s.midi, vel, delay, chord: this.chords[this.chordIndex], x: hit.point.x, y: s.a.y });
     }
     this.strings.forEach((s) => s.step(dt));
     this.chordFlash *= Math.exp(-dt * 3);
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type !== 'hit') return;
+    pluck(this.engine, this.channel, evt.midi, { velocity: evt.vel, preset: this.opts.sound, when, pan: ((evt.string ?? 2.5) - 2.5) / 10 });
+    if (this.onScreen && this.strings[evt.string]) later(when, () => this.strings[evt.string].excite(evt.vel));
   }
 
   draw(ctx) {

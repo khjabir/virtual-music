@@ -14,6 +14,9 @@ const VEL_POINTS = [0, 4, 8, 9, 12, 16, 20];
 export const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 export class Hand {
+  /** Seconds of motion prediction (0 = off). Set from the tracking settings. */
+  static lead = 0;
+
   constructor(id, virtual = false) {
     this.id = id;
     this.virtual = virtual;
@@ -37,13 +40,25 @@ export class Hand {
   activeTips(list) { return this.virtual ? [TIP.index] : list; }
 
   update(raw, t, smooth = true) {
-    const pts = raw.map((p, i) => {
+    const filtered = raw.map((p, i) => {
       if (!smooth) return { x: p.x, y: p.y, z: p.z || 0 };
       let f = this.filters[i];
       if (!f) f = this.filters[i] = [new OneEuro(), new OneEuro()];
       return { x: f[0].filter(p.x, t), y: f[1].filter(p.y, t), z: p.z || 0 };
     });
     const dt = this.points ? Math.max(1 / 240, t - this.lastSeen) : 1 / 30;
+    // Motion prediction: camera and model add some delay, so fast-moving points are pushed
+    // ahead along their motion by Hand.lead seconds. Slow or still points are left alone.
+    let pts = filtered;
+    if (Hand.lead > 0 && this.filtered && !this.virtual) {
+      pts = filtered.map((p, i) => {
+        const q = this.filtered[i];
+        const vx = (p.x - q.x) / dt, vy = (p.y - q.y) / dt;
+        const k = Math.max(0, Math.min(1, (Math.hypot(vx, vy) - 150) / 450)) * Hand.lead;
+        return { x: p.x + vx * k, y: p.y + vy * k, z: p.z };
+      });
+    }
+    this.filtered = filtered;
     this.prev = this.points || pts;
     this.points = pts;
     this.sampleDt = dt;

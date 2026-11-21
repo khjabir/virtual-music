@@ -1,6 +1,10 @@
 import { Instrument } from './base.js';
 import { StrikeDetector, FONT } from './common.js';
 import { DRUMS } from '../audio/synths.js';
+import { later } from '../core/bus.js';
+
+// General MIDI percussion numbers, for MIDI output and export.
+export const GM_DRUMS = { kick: 36, snare: 38, clap: 39, hihat: 42, tomFloor: 43, openhat: 46, tomMid: 47, tomHigh: 50, crash: 49, ride: 51 };
 
 // Positions are fractions of the screen; the layout mirrors for left-handed players.
 const PADS = [
@@ -23,6 +27,7 @@ export class Drums extends Instrument {
   static settings = [
     { key: 'sensitivity', label: 'Sensitivity', type: 'range', min: 0.5, max: 2, step: 0.05, default: 1 },
     { key: 'sticks', label: 'Hit with', type: 'select', options: [['index', 'Index fingertips'], ['palm', 'Whole hand']], default: 'index' },
+    { key: 'kick', label: 'Kick drum also plays from', type: 'select', options: [['hands', 'Hands only'], ['nod', 'Nodding your head'], ['stomp', 'Stomping a foot (feet in view)']], default: 'hands' },
   ];
 
   constructor(app) {
@@ -56,15 +61,31 @@ export class Drums extends Instrument {
   update(hands, dt) {
     const tips = this.opts.sticks === 'palm' ? [9] : [8];
     const hits = this.strikes.detect(hands, tips, this.H, (p) => this.padAt(p), Number(this.opts.sensitivity));
-    for (const hit of hits) {
-      const pad = hit.zone;
-      if (this.channel) DRUMS[pad.id](this.engine, this.channel.input, hit.velocity, this.engine.now);
-      pad.flash = 1;
-      this.ripples.push({ pad, age: 0, v: hit.velocity });
-    }
+    for (const hit of hits) this.hitPad(hit.zone.id, hit.velocity);
     this.pads.forEach((p) => { p.flash *= Math.exp(-dt * 6); });
     this.ripples.forEach((r) => { r.age += dt; });
     this.ripples = this.ripples.filter((r) => r.age < 0.5);
+  }
+
+  /** Play a pad (from a hand, a head nod or foot stomp, the loop station or a replay). */
+  hitPad(id, vel, when = 0, record = true) {
+    if (this.channel) {
+      const custom = this.app.userSounds && this.app.userSounds.padBuffer(id);
+      if (custom) this.app.userSounds.playPad(id, this.channel.input, vel, when);
+      else if (DRUMS[id]) DRUMS[id](this.engine, this.channel.input, vel, this.engine.now + when);
+    }
+    const pad = this.pads.find((p) => p.id === id);
+    if (pad && this.onScreen) {
+      later(when, () => {
+        pad.flash = 1;
+        this.ripples.push({ pad, age: 0, v: vel });
+      });
+    }
+    if (record) this.emit({ type: 'hit', key: id, pad: id, midi: GM_DRUMS[id], vel, delay: when, x: pad ? pad.cx : this.W / 2, y: pad ? pad.cy : this.H / 2 });
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type === 'hit') this.hitPad(evt.pad, evt.vel, when, false);
   }
 
   draw(ctx) {

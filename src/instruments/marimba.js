@@ -2,6 +2,7 @@ import { Instrument } from './base.js';
 import { StrikeDetector, roundRect, FONT } from './common.js';
 import { scaleNotes, noteColor, pitchClassName, clamp } from '../audio/music.js';
 import { mallet, MALLET_KINDS } from '../audio/synths.js';
+import { later } from '../core/bus.js';
 
 export class Marimba extends Instrument {
   static id = 'marimba';
@@ -50,8 +51,16 @@ export class Marimba extends Instrument {
       const b = hit.zone;
       mallet(this.engine, this.channel, b.midi, { velocity: hit.velocity, kind: this.opts.kind, pan: ((b.x + b.w / 2) / this.W - 0.5) * 1.2 });
       b.flash = 1;
+      this.emit({ type: 'hit', key: b.midi, midi: b.midi, vel: hit.velocity, x: b.x + b.w / 2, y: b.y + b.h / 2 });
     }
     this.bars.forEach((b) => { b.flash *= Math.exp(-dt * 5); });
+  }
+
+  playEvent(evt, when = 0) {
+    if (evt.type !== 'hit') return;
+    mallet(this.engine, this.channel, evt.midi, { velocity: evt.vel, kind: this.opts.kind, when });
+    const b = this.onScreen && this.bars.find((x) => x.midi === evt.midi);
+    if (b) later(when, () => { b.flash = 1; });
   }
 
   draw(ctx) {
