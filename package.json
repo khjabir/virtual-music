@@ -2,7 +2,20 @@
   "name": "virtual-music",
   "version": "1.0.0",
   "description": "Play guitar, piano, drums, harp, marimba, theremin, violin and a launchpad in the air with webcam hand tracking. Loop, jam with a backing band, learn songs and share clips. Runs entirely in the browser.",
-  "keywords": ["hand-tracking", "mediapipe", "web-audio", "music", "air-guitar", "virtual-instruments", "piano", "webcam", "gesture", "looper", "web-midi", "rhythm-game"],
+  "keywords": [
+    "hand-tracking",
+    "mediapipe",
+    "web-audio",
+    "music",
+    "air-guitar",
+    "virtual-instruments",
+    "piano",
+    "webcam",
+    "gesture",
+    "looper",
+    "web-midi",
+    "rhythm-game"
+  ],
   "homepage": "https://virtual-music.vercel.app/",
   "repository": {
     "type": "git",
@@ -14,5 +27,8 @@
   "private": true,
   "scripts": {
     "start": "npx --yes serve -l 8000 ."
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1"
   }
 }
